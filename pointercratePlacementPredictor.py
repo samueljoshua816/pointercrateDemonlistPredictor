@@ -1,0 +1,227 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import datetime as dt
+import calendar as cld
+import random
+
+numMonthlyPlacements = {}
+levelPlacementFrequencyList = {}
+stabilityFreq = {}
+levelRanks = {} #rank, levelName
+levelSwapFreq = {}
+
+def loadListData():
+    return pd.read_csv("pointercrateListData.csv")
+
+def findNumMonthlyPlacements(df):
+    cols = df.columns
+    for i in range(1, len(cols) - 1):
+        current_col = cols[i]
+        next_col = cols[i + 1]
+
+        noLegacyLevels = 0
+        nextNolegacyLevels = 0
+
+        for index, row in df.iterrows():
+            if row[current_col] == "LL":
+                noLegacyLevels += 1
+
+            if row[next_col] == "LL":
+                nextNolegacyLevels += 1
+
+        numMonthlyPlacements[(noLegacyLevels - nextNolegacyLevels)] = (numMonthlyPlacements.get((noLegacyLevels - nextNolegacyLevels), 0) + 1)
+
+    return numMonthlyPlacements
+
+def findLevelPlacementsFreq(df):
+    cols = df.columns
+    for i in range(1, len(cols) - 1):
+        current_col = cols[i]
+        next_col = cols[i + 1]
+
+        for index, row in df.iterrows():
+            if row[current_col] != "NP" and row[current_col] != "LL" and row[next_col] == "NP":
+                placement = int(row[current_col])
+                levelPlacementFrequencyList[placement] = (levelPlacementFrequencyList.get(placement, 0) + 1)
+
+    return levelPlacementFrequencyList
+
+def findLevelStability(df): #doesn't work as intended
+    
+    cols = df.columns
+    max_level = 150
+    group_size = 15
+
+    for i in range(len(cols) - 2, 0, -1):
+
+        current_col = cols[i]
+        next_col = cols[i + 1]
+
+        for start in range(1, max_level + 1, group_size):
+            end = start + group_size - 1
+
+            list_diff = {}
+
+            for r in range(len(df)):
+                row = df.iloc[r]
+
+                curr = row[current_col]
+                nxt = row[next_col]
+
+                if curr in ["LL", "NP"] or nxt in ["LL", "NP"]:
+                    continue
+
+                rank = int(curr)
+
+                if start <= rank <= end:
+                    movement = abs(int(curr) - int(nxt))
+                    list_diff[row.iloc[0]] = movement
+
+            if len(list_diff) > 0:
+                diff = np.array(list(list_diff.values()))
+
+                q1 = np.percentile(diff, 25)
+                q3 = np.percentile(diff, 75)
+                iqr = q3 - q1
+
+                lower_bound = q1 - 1.5 * iqr
+                upper_bound = q3 + 1.5 * iqr
+
+                for level, movement in list_diff.items():
+                    row_index = df[df.iloc[:, 0] == level].index[0]
+
+                    if df.iloc[row_index, 1] == "LL":
+                        stabilityFreq.pop(level, None)
+                        continue
+
+                    if lower_bound <= movement <= upper_bound:
+                        stabilityFreq[level] = stabilityFreq.get(level, 0) + 1
+                    else:
+                        levelSwapFreq[movement] = levelSwapFreq.get(movement,0)+1
+                        stabilityFreq[level] = 0
+
+    return stabilityFreq
+              
+def runSimulation(): 
+    df = loadListData()
+    numSimulations = 1
+
+    for i in range(1,151):
+            # the dictionary becomes inaccurate by doing this, but for the purposes of the project this is fine
+            levelPlacementFrequencyList[i] = levelPlacementFrequencyList.get(i,0)+1
+
+    for index, row in df.iterrows():
+        level = row.iloc[0]
+        rank = row.iloc[1]
+        if rank.isdigit():
+            levelRanks[int(rank)] = level
+    print(levelRanks,"\n") # test - remove in final ver
+            
+    for i in range(0,numSimulations):
+            monthlyAdd = []
+            placementAdd = []
+            stabilityAdd = set()
+            swapArr = []
+            monthCount = 0
+
+            currentCheckpoint = dt.date.today()
+            
+            while any(levelRanks.values()):
+                daysInMonth = cld.monthrange(currentCheckpoint.year, currentCheckpoint.month)[1]
+                remainingDays = daysInMonth - currentCheckpoint.day + 1
+                scale = remainingDays / daysInMonth
+                nextCheckpointDate = currentCheckpoint + dt.timedelta(days=remainingDays)
+
+                for key in numMonthlyPlacements.keys():
+                    for i in range(0,numMonthlyPlacements[key]):
+                        monthlyAdd.append(key)
+                numOfNewLvls = round(random.choice(monthlyAdd)*scale)
+                numMonthlyPlacements[numOfNewLvls] = numMonthlyPlacements.get(numOfNewLvls,0)+1
+
+                for key in levelPlacementFrequencyList.keys():
+                    for i in range(0,levelPlacementFrequencyList[key]):
+                        placementAdd.append(key)
+                    random.shuffle(placementAdd)
+                while len(placementAdd) > numOfNewLvls:
+                    placementAdd.pop(random.randint(0, len(placementAdd) - 1))
+                for placement in placementAdd:
+                    levelPlacementFrequencyList[placement] = levelPlacementFrequencyList.get(placement,0)+1
+                    for rank in range(max(levelRanks.keys()), placement - 1, -1):
+                        levelRanks[rank + 1] = levelRanks[rank]
+                    levelRanks[placement] = ""
+                print("New Placements: ",placementAdd,"\n") #test - remove in final
+
+                for key in stabilityFreq.keys():
+                    for i in range(stabilityFreq[key]):
+                        stabilityAdd.add(key)
+                prob = (1 / (len(df.columns) - 2)) * scale
+                for level in stabilityAdd.copy():
+                    if random.random() > prob:
+                        stabilityAdd.remove(level)
+
+                print("Levels Being Swapped: ", stabilityAdd,"\n") #test - remove in final
+
+                print(levelSwapFreq, "\n") #test - remove in final
+                for key in levelSwapFreq.keys():
+                    for value in range(levelSwapFreq[key]):
+                        swapArr.append(key)
+                random.shuffle(swapArr)
+                while len(swapArr) > len(stabilityAdd):
+                    swapArr.pop(random.randint(0, (len(swapArr))- 1))
+                for i in range(0, len(swapArr)):
+                    if random.random() < 0.5:
+                        swapArr[i] = -(swapArr[i])
+
+                
+                if len(swapArr) > 0:
+                    for i, movement in enumerate(swapArr): 
+                        stabList = list(stabilityAdd)         
+                        level = stabList[i]
+
+                        matching_ranks = [rank for rank, name in levelRanks.items() if name == level]
+                        
+                        if not matching_ranks:
+                            continue
+                            
+                        current = matching_ranks[0]
+
+                        if current + movement < 1: #check to ensure level ranks are positive, non-zero values 
+                            movement = -movement
+
+                        max_rank = max(levelRanks.keys())
+                        min_rank = min(levelRanks.keys())
+                        target = max(min(current + movement, max_rank), min_rank)
+                        
+                        if movement < 0:
+                            while current > target:
+                                levelRanks[current], levelRanks[current - 1] = (levelRanks[current - 1], levelRanks[current])
+                                current -= 1
+                        elif movement > 0:
+                            while current < target:
+                                levelRanks[current], levelRanks[current + 1] = (levelRanks[current + 1],levelRanks[current])
+                                current += 1
+                        elif movement == 0:
+                            continue
+                print("Swap Vals: ",swapArr,"\n") #remove in final ver
+                
+                for level in stabilityAdd:
+                    if level in stabilityFreq:
+                        stabilityFreq[level] = 0
+                print(stabilityFreq,"\n") #check | remove in final vers
+
+                for key in reversed(list(levelRanks)):
+                    if key > 150: #LL handling 
+                        del levelRanks[key]
+                monthCount +=scale
+                print("Months:" ,monthCount)
+                print(currentCheckpoint,levelRanks)
+
+                currentCheckpoint = nextCheckpointDate
+
+    return None
+
+print("Monthly Placements:", findNumMonthlyPlacements(loadListData()), "\n")
+print("Rank Placement Frequencies:", findLevelPlacementsFreq(loadListData()), "\n")
+print("Stability Count:", findLevelStability(loadListData()), "\n")
+print(runSimulation())
