@@ -8,6 +8,7 @@ import random
 numMonthlyPlacements = {}
 levelPlacementFrequencyList = {}
 stabilityFreq = {}
+originalLevelRanks = {} #rank, levelName
 levelRanks = {} #rank, levelName
 levelSwapFreq = {}
 
@@ -54,18 +55,15 @@ def findLevelStability(df): #doesn't work as intended
     group_size = 15
 
     for i in range(len(cols) - 2, 0, -1):
-
         current_col = cols[i]
         next_col = cols[i + 1]
 
         for start in range(1, max_level + 1, group_size):
             end = start + group_size - 1
-
             list_diff = {}
 
             for r in range(len(df)):
                 row = df.iloc[r]
-
                 curr = row[current_col]
                 nxt = row[next_col]
 
@@ -80,7 +78,6 @@ def findLevelStability(df): #doesn't work as intended
 
             if len(list_diff) > 0:
                 diff = np.array(list(list_diff.values()))
-
                 q1 = np.percentile(diff, 25)
                 q3 = np.percentile(diff, 75)
                 iqr = q3 - q1
@@ -117,17 +114,18 @@ def runSimulation():
         if rank.isdigit():
             levelRanks[int(rank)] = level
     print(levelRanks,"\n") # test - remove in final ver
-            
+
+    originalLevelRanks = levelRanks.copy()
     for i in range(0,numSimulations):
             monthlyAdd = []
             placementAdd = []
             stabilityAdd = set()
             swapArr = []
             monthCount = 0
-
+            newLevelCount = 1
             currentCheckpoint = dt.date.today()
             
-            while any(levelRanks.values()):
+            while bool(set(originalLevelRanks.values()) & set(levelRanks.values())):
                 daysInMonth = cld.monthrange(currentCheckpoint.year, currentCheckpoint.month)[1]
                 remainingDays = daysInMonth - currentCheckpoint.day + 1
                 scale = remainingDays / daysInMonth
@@ -149,7 +147,8 @@ def runSimulation():
                     levelPlacementFrequencyList[placement] = levelPlacementFrequencyList.get(placement,0)+1
                     for rank in range(max(levelRanks.keys()), placement - 1, -1):
                         levelRanks[rank + 1] = levelRanks[rank]
-                    levelRanks[placement] = ""
+                    levelRanks[placement] = "NL"+str(newLevelCount)
+                    newLevelCount = newLevelCount +1
                 print("New Placements: ",placementAdd,"\n") #test - remove in final
 
                 for key in stabilityFreq.keys():
@@ -159,10 +158,10 @@ def runSimulation():
                 for level in stabilityAdd.copy():
                     if random.random() > prob:
                         stabilityAdd.remove(level)
-
+                    #if key not in stabilityAdd:
+                        #stabilityFreq[key] = stabilityFreq.get(key,0)+1
                 print("Levels Being Swapped: ", stabilityAdd,"\n") #test - remove in final
 
-                print(levelSwapFreq, "\n") #test - remove in final
                 for key in levelSwapFreq.keys():
                     for value in range(levelSwapFreq[key]):
                         swapArr.append(key)
@@ -173,7 +172,6 @@ def runSimulation():
                     if random.random() < 0.5:
                         swapArr[i] = -(swapArr[i])
 
-                
                 if len(swapArr) > 0:
                     for i, movement in enumerate(swapArr): 
                         stabList = list(stabilityAdd)         
@@ -208,18 +206,23 @@ def runSimulation():
                 for level in stabilityAdd:
                     if level in stabilityFreq:
                         stabilityFreq[level] = 0
-                print(stabilityFreq,"\n") #check | remove in final vers
+
+                #print(stabilityFreq,"\n") #check | remove in final vers
+                for level in levelRanks.values():
+                    stabilityFreq[level] = stabilityFreq.get(level,0)+1
 
                 for key in reversed(list(levelRanks)):
-                    if key > 150: #LL handling 
+                    if key > 150:  # LL handling
+                        level = levelRanks[key]
                         del levelRanks[key]
+                        stabilityFreq.pop(level, None)
+
                 monthCount +=scale
-                print("Months:" ,monthCount)
-                print(currentCheckpoint,levelRanks)
-
                 currentCheckpoint = nextCheckpointDate
+                print("Months:" ,monthCount)
+                print(currentCheckpoint,": ",levelRanks)
 
-    return None
+    return None # placeholder
 
 print("Monthly Placements:", findNumMonthlyPlacements(loadListData()), "\n")
 print("Rank Placement Frequencies:", findLevelPlacementsFreq(loadListData()), "\n")
