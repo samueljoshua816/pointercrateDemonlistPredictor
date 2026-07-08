@@ -222,7 +222,9 @@ def runSimulation():
                 print("Months:" ,monthCount)
                 print(currentCheckpoint,": ",levelRanks)
 
-    return None # placeholder
+    levelRanks.clear()
+    levelRanks.update(originalLevelRanks)
+    return None # placeholder for the json
 
 print("Monthly Placements:", findNumMonthlyPlacements(loadListData()), "\n")
 print("Rank Placement Frequencies:", findLevelPlacementsFreq(loadListData()), "\n")
